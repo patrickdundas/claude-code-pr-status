@@ -1,0 +1,13 @@
+{
+  "name": "patrickdundas",
+  "description": "Claude Code mods by Patrick Dundas",
+  "owner": {
+    "name": "Patrick Dundas"
+  },
+  "plugins": [
+    {
+      "name": "pr-status",
+      "source": "./"
+    }
+  ]
+}

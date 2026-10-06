@@ -1,0 +1,8 @@
+{
+  "name": "pr-status",
+  "version": "0.1.0",
+  "description": "Shows live GitHub PR state beside PR links in the transcript, and tells Claude when a PR's state changes.",
+  "author": { "name": "Patrick Dundas", "url": "https://github.com/patrickdundas" },
+  "repository": "https://github.com/patrickdundas/claude-code-pr-status",
+  "types": "./types/index.d.ts"
+}
