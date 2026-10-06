@@ -77,6 +77,14 @@ export function decorate(text: string, prs: Record<string, PrStatus>): string {
     .join('')
 }
 
+// Titles come from strangers on public repos: drop control and bidi-override characters.
+export function cleanTitle(value: unknown): string {
+  return String(value ?? '')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function parseGh(stdout: string): PrStatus | null {
   try {
     const j = JSON.parse(stdout)
@@ -84,7 +92,7 @@ export function parseGh(stdout: string): PrStatus | null {
     return {
       state: j.state,
       isDraft: Boolean(j.isDraft),
-      title: String(j.title ?? ''),
+      title: cleanTitle(j.title),
       mergedAt: j.mergedAt || null,
       reviewDecision: j.reviewDecision || null,
     }
@@ -98,5 +106,6 @@ export function describeChange(key: string, before: PrStatus, after: PrStatus): 
   const now = stateWord(after)
   if (was === now) return null
   const when = after.state === 'MERGED' && after.mergedAt ? ` at ${after.mergedAt}` : ''
-  return `PR ${key} ("${after.title}") changed state: ${was} → ${now}${when}.`
+  // No title here: this note reaches the model, and a title is untrusted text.
+  return `PR ${key} changed state: ${was} → ${now}${when}.`
 }

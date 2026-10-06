@@ -27,6 +27,17 @@ describe('layout', () => {
     ])
   })
 
+  test('only web links become clickable', async () => {
+    const blocks = layout('https://github.com/a/b/pull/1 [x](file:///etc/passwd) [y](https://e.com)', prs)
+    const runs = blocks?.[0]?.kind === 'line' ? blocks[0].runs : []
+    expect(runs.filter(r => r.href).map(r => r.href)).toEqual([
+      'https://github.com/a/b/pull/1',
+      'https://github.com/a/b/pull/1',
+      'https://e.com',
+    ])
+    expect(runs.some(r => r.text === '[x](file:///etc/passwd)' && !r.href)).toBe(true)
+  })
+
   test('leaves PR links inside code fences and tables to markdown', async () => {
     expect(layout('```\nhttps://github.com/a/b/pull/1\n```\n| https://github.com/a/b/pull/1 |', prs)).toBeNull()
   })

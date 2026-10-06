@@ -25,6 +25,11 @@ describe('pr links', () => {
     )
   })
 
+  test('strips control and bidi characters from titles', async () => {
+    const s = parseGh(JSON.stringify({ state: 'OPEN', title: 'a\u001b[31m\nb\u202ec' }))
+    expect(s?.title).toBe('a [31m b c')
+  })
+
   test('leaves unknown PRs alone', async () => {
     const text = 'https://github.com/acme/app/pull/9'
     expect(decorate(text, {})).toBe(text)
@@ -34,7 +39,7 @@ describe('pr links', () => {
     const s = parseGh(JSON.stringify({ state: 'MERGED', isDraft: false, title: 'Fix', mergedAt: '2026-10-06T12:00:00Z', reviewDecision: '' }))
     expect(s).toEqual(merged)
     expect(describeChange('acme/app#12', open, merged)).toBe(
-      'PR acme/app#12 ("Fix") changed state: open → merged at 2026-10-06T12:00:00Z.',
+      'PR acme/app#12 changed state: open → merged at 2026-10-06T12:00:00Z.',
     )
     expect(describeChange('acme/app#12', open, open)).toBeNull()
   })

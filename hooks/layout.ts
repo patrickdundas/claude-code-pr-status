@@ -68,13 +68,17 @@ export function inlineRuns(line: string, prs: Record<string, PrStatus>): Run[] {
       }
       else runs.push({ text: href, href })
     } else if (g.code) runs.push({ text: g.code.slice(1, -1), color: 'permission' })
-    else if (g.md) runs.push({ text: g.mdt || (g.mdu as string), href: g.mdu })
+    else if (g.md) runs.push(isWeb(g.mdu) ? { text: g.mdt || (g.mdu as string), href: g.mdu } : { text: g.md })
     else if (g.bold) runs.push({ text: g.bold.slice(2, -2), bold: true })
     else if (g.it) runs.push({ text: g.it.slice(1, -1), italic: true })
     else if (g.url) runs.push({ text: g.url, href: g.url })
   }
   if (at < line.length) runs.push({ text: line.slice(at) })
   return runs
+}
+
+function isWeb(url: string | undefined): boolean {
+  return /^https?:\/\//i.test(url ?? '')
 }
 
 function hasKnownPr(line: string, prs: Record<string, PrStatus>): boolean {
