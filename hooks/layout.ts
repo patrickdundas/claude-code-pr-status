@@ -48,12 +48,53 @@ function title(s: PrStatus): string {
   return s.title.length > TITLE_MAX ? `${s.title.slice(0, TITLE_MAX - 1).trimEnd()}…` : s.title
 }
 
+const SEP = String.raw`\s*[,:;\u2013\u2014-]?\s*`
+const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// The badge already shows number and title, so drop a copy written right beside the link.
+function echoes(number: string, s: PrStatus): { before: RegExp; after: RegExp; whole: RegExp } {
+  const num = String.raw`\(?(?:PR\s*)?#${number}\b\)?`
+  const ttl = s.title ? String.raw`["\u201c'*_]*${escape(s.title)}["\u201d'*_]*` : '(?!)'
+  const any = String.raw`(?:${num}(?:${SEP}${ttl})?|${ttl}(?:${SEP}${num})?)`
+  return {
+    before: new RegExp(String.raw`(^|\s)${any}${SEP}$`, 'i'),
+    after: new RegExp(String.raw`^\s*(?:\(${any}\)|${SEP}${num})(?=\W|$)`, 'i'),
+    whole: new RegExp(String.raw`^\s*${any}\s*$`, 'i'),
+  }
+}
+
+const ONLY_SEP = new RegExp(String.raw`^${SEP}$`)
+
+function trimBefore(runs: Run[], e: ReturnType<typeof echoes>) {
+  let end = runs.length
+  for (let i = runs.length - 1; i >= 0 && i >= runs.length - 4; i--) {
+    const r = runs[i] as Run
+    if (r.href) return
+    if (ONLY_SEP.test(r.text)) continue
+    if (e.whole.test(r.text)) {
+      runs.splice(i, end - i)
+      end = i
+      continue
+    }
+    const text = r.text.replace(e.before, '$1')
+    if (text !== r.text) runs.splice(i, end - i, { ...r, text })
+    return
+  }
+}
+
 export function inlineRuns(line: string, prs: Record<string, PrStatus>): Run[] {
   const runs: Run[] = []
   let at = 0
+  let echo: ReturnType<typeof echoes> | null = null
+  const plain = (text: string) => {
+    if (echo) text = text.replace(echo.after, '')
+    echo = null
+    if (text) runs.push({ text })
+  }
   for (const m of line.matchAll(INLINE)) {
     const g = m.groups ?? {}
-    if (m.index > at) runs.push({ text: line.slice(at, m.index) })
+    if (m.index > at) plain(line.slice(at, m.index))
+    else echo = null
     at = m.index + m[0].length
     const owner = g.o1 ?? g.o2
     const repo = g.r1 ?? g.r2
@@ -62,9 +103,12 @@ export function inlineRuns(line: string, prs: Record<string, PrStatus>): Run[] {
       const href = `https://github.com/${owner}/${repo}/pull/${number}`
       const s = prs[prKey(owner, repo, number)]
       if (s) {
+        echo = echoes(number, s)
+        trimBefore(runs, echo)
         const icons = iconRuns(s)
         runs.push(...icons, { text: ' ' }, { text: `#${number}`, color: icons[0]?.color, bold: true, href })
         runs.push({ text: ' ' }, { text: title(s), underline: true, href })
+        continue
       }
       else runs.push({ text: href, href })
     } else if (g.code) runs.push({ text: g.code.slice(1, -1), color: 'permission' })
@@ -73,7 +117,7 @@ export function inlineRuns(line: string, prs: Record<string, PrStatus>): Run[] {
     else if (g.it) runs.push({ text: g.it.slice(1, -1), italic: true })
     else if (g.url) runs.push({ text: g.url, href: g.url })
   }
-  if (at < line.length) runs.push({ text: line.slice(at) })
+  if (at < line.length) plain(line.slice(at))
   return runs
 }
 

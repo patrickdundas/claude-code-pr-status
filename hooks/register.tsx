@@ -18,7 +18,9 @@ This interface replaces every GitHub PR URL in your replies with the PR's live s
 - Write the bare URL (https://github.com/<owner>/<repo>/pull/<number>) where the PR belongs in the sentence, as if it were the PR's name: "I opened https://github.com/o/r/pull/12 for this."
 - Never add the PR's title, its #number, or its open/draft/merged/closed state beside the URL. The replacement already shows them, so they would appear twice.
 - Never wrap the URL in markdown link syntax or backticks, and never put it in a table. Those stop the replacement or its colors.
-- For several PRs, use a list with one URL per item, plus any note about what you did with each.`
+- For several PRs, use a list with one URL per item, plus any note about what you did with each.
+Wrong: It's PR #803, "Fix login": https://github.com/o/r/pull/803
+Right: It's https://github.com/o/r/pull/803.`
 const GH = ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']
 
 const known = new Set<string>()

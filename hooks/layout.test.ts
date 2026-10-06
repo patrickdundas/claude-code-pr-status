@@ -38,6 +38,20 @@ describe('layout', () => {
     expect(runs.some(r => r.text === '[x](file:///etc/passwd)' && !r.href)).toBe(true)
   })
 
+  test('drops a number or title echoed beside the badge', async () => {
+    const t = { 'a/b#803': { ...merged, title: 'Events: trim bounds' } }
+    const text = (line: string) => {
+      const b = layout(line, t)?.[0]
+      return b?.kind === 'line' ? b.runs.map(r => r.text).join('') : null
+    }
+    const badge = '\uf419 #803 Events: trim bounds'
+    expect(text('It\'s PR #803, "Events: trim bounds": https://github.com/a/b/pull/803')).toBe(`It's ${badge}`)
+    expect(text('See #803 https://github.com/a/b/pull/803 (#803) now')).toBe(`See ${badge} now`)
+    expect(text('**Events: trim bounds** — https://github.com/a/b/pull/803')).toBe(badge)
+    expect(text('PR https://github.com/a/b/pull/803 is merged')).toBe(`PR ${badge} is merged`)
+    expect(text('Issue #80 relates to https://github.com/a/b/pull/803')).toBe(`Issue #80 relates to ${badge}`)
+  })
+
   test('leaves PR links inside code fences and tables to markdown', async () => {
     expect(layout('```\nhttps://github.com/a/b/pull/1\n```\n| https://github.com/a/b/pull/1 |', prs)).toBeNull()
   })
