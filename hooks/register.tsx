@@ -11,6 +11,14 @@ import type { Seen } from './poll'
 const prs = atom({ plugin: 'pr-status', key: 'prs' } as const, {} as Record<string, PrStatus>)
 
 const TICK_MS = 5_000
+const DRAWN_ON = new Set(['terminal', 'desktop'])
+
+const GUIDE = `# GitHub pull request links
+This interface replaces every GitHub PR URL in your replies with the PR's live status icon, its number and its title, as one clickable link. Write PR references so that replacement reads cleanly:
+- Write the bare URL (https://github.com/<owner>/<repo>/pull/<number>) where the PR belongs in the sentence, as if it were the PR's name: "I opened https://github.com/o/r/pull/12 for this."
+- Never add the PR's title, its #number, or its open/draft/merged/closed state beside the URL. The replacement already shows them, so they would appear twice.
+- Never wrap the URL in markdown link syntax or backticks, and never put it in a table. Those stop the replacement or its colors.
+- For several PRs, use a list with one URL per item, plus any note about what you did with each.`
 const GH = ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']
 
 const known = new Set<string>()
@@ -91,6 +99,12 @@ export const register: Register = on => {
     $.clock.every(TICK_MS, () => void poll($))
     return next(e)
   })
+
+  on('prompt.compose', async ($, e, next) => {
+    const result = await next(e)
+    if (!e.surfaces.some(s => DRAWN_ON.has(s))) return result
+    return { sections: [...result.sections, { id: 'pr-status:links', text: GUIDE, scope: 'session' as const }] }
+  }).catch(($, e, next) => next(e))
 
   // Refresh before the turn starts, so Claude never begins a turn on stale state.
   on('prompt.submit', async ($, e, next) => {
