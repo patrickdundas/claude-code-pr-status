@@ -4,31 +4,35 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { PrStatus } from '../types'
 import { layout } from './layout'
 import type { Run } from './layout'
-import { decorate, describeChange, findPrs, parseGh, textsOf } from './lib'
+import { decorate, describeChange, findPrs, textsOf } from './lib'
+import { BATCH_MAX, IDLE_MS, batchArgs, interval, isRecent, parseBatch, refOf } from './poll'
+import type { Seen } from './poll'
 
 const prs = atom({ plugin: 'pr-status', key: 'prs' } as const, {} as Record<string, PrStatus>)
 
-const OPEN_POLL_MS = 60_000
-const CLOSED_POLL_MS = 10 * 60_000
-const TICK_MS = 10_000
+const TICK_MS = 5_000
 const GH = ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']
 
-const urls = new Map<string, string>()
-const nextPollAt = new Map<string, number>()
+const known = new Set<string>()
+const seen = new Map<string, Seen>()
+const checkedAt = new Map<string, number>()
+let row = 0
+let activeAt = 0
 let isPolling = false
 
-function track(text: string) {
-  for (const { key, url } of findPrs(text)) {
-    if (!urls.has(key)) urls.set(key, url)
+// Only conversation rows mark a PR recent; redrawing an old message must not.
+function track(text: string, now?: number) {
+  for (const { key } of findPrs(text)) {
+    known.add(key)
+    if (now !== undefined) seen.set(key, { row, at: now })
   }
 }
 
-async function fetchStatus($: EngineInterface, url: string): Promise<PrStatus | null> {
-  const fields = 'state,isDraft,title,mergedAt,reviewDecision'
+async function runGh($: EngineInterface, args: string[]): Promise<string | null> {
   for (const gh of GH) {
     try {
-      const r = await $.process.run([gh, 'pr', 'view', url, '--json', fields], { timeoutMs: 20_000 })
-      return r.exitCode === 0 ? parseGh(r.stdout) : null
+      // gh exits non-zero when one PR in the batch is missing, but still prints the rest.
+      return (await $.process.run([gh, ...args], { timeoutMs: 15_000 })).stdout
     } catch {
       // gh not at this path; try the next one.
     }
@@ -36,33 +40,39 @@ async function fetchStatus($: EngineInterface, url: string): Promise<PrStatus | 
   return null
 }
 
-async function poll($: EngineInterface) {
+async function poll($: EngineInterface, force = false) {
   if (isPolling) return
   isPolling = true
   try {
     const now = await $.clock.now()
-    const known = await read($, prs)
-    const due = [...urls].filter(([key]) => (nextPollAt.get(key) ?? 0) <= now)
-    const results = await Promise.all(due.map(async ([key, url]) => [key, await fetchStatus($, url)] as const))
+    if (!force && now - activeAt > IDLE_MS) return
+    const stored = await read($, prs)
+    const due = [...known]
+      .filter(key => {
+        const wait = interval(stored[key], isRecent(seen.get(key), row, now))
+        if (force) return wait !== Infinity
+        return now - (checkedAt.get(key) ?? -Infinity) >= wait
+      })
+      .map(refOf)
+      .filter(r => r !== null)
+      .slice(0, BATCH_MAX)
+    if (!due.length) return
 
+    const stdout = await runGh($, batchArgs(due))
+    const results = stdout ? parseBatch(stdout, due) : new Map<string, PrStatus>()
     const changed: Record<string, PrStatus> = {}
     const notes: string[] = []
-    for (const [key, status] of results) {
-      if (!status) {
-        nextPollAt.set(key, now + OPEN_POLL_MS)
-        continue
-      }
-      nextPollAt.set(key, now + (status.state === 'OPEN' ? OPEN_POLL_MS : CLOSED_POLL_MS))
-      const before = known[key]
-      if (before && JSON.stringify(before) === JSON.stringify(status)) continue
+    for (const { key } of due) {
+      checkedAt.set(key, now)
+      const status = results.get(key)
+      const before = stored[key]
+      if (!status || (before && JSON.stringify(before) === JSON.stringify(status))) continue
       changed[key] = status
       const note = before && describeChange(key, before, status)
       if (note) notes.push(note)
     }
 
-    if (Object.keys(changed).length > 0) {
-      await update($, prs, current => ({ ...current, ...changed }))
-    }
+    if (Object.keys(changed).length > 0) await update($, prs, current => ({ ...current, ...changed }))
     for (const note of notes) {
       $.ui.toast(note)
       await $.session.append({
@@ -76,25 +86,35 @@ async function poll($: EngineInterface) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    for (const key of Object.keys(await read($, prs))) {
-      const [repo, number] = key.split('#')
-      urls.set(key, `https://github.com/${repo}/pull/${number}`)
-    }
+    for (const key of Object.keys(await read($, prs))) known.add(key)
+    activeAt = await $.clock.now()
     $.clock.every(TICK_MS, () => void poll($))
     return next(e)
   })
 
-  on('session.append', ($, e, next) => {
-    for (const text of textsOf(e.message.content)) track(text)
+  // Refresh before the turn starts, so Claude never begins a turn on stale state.
+  on('prompt.submit', async ($, e, next) => {
+    activeAt = await $.clock.now()
+    await poll($, true)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('session.append', async ($, e, next) => {
+    if (!e.agentId) {
+      const now = await $.clock.now()
+      activeAt = now
+      row += 1
+      for (const text of textsOf(e.message.content)) track(text, now)
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     track(e.props.text)
-    const known = await read($, prs)
-    const blocks = e.props.isSummary ? null : layout(e.props.text, known)
+    const stored = await read($, prs)
+    const blocks = e.props.isSummary ? null : layout(e.props.text, stored)
     if (!blocks) {
-      const text = decorate(e.props.text, known)
+      const text = decorate(e.props.text, stored)
       return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
     }
 

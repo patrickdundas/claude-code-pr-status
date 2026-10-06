@@ -5,7 +5,9 @@ A Claude Code mod that shows the live state of GitHub pull requests wherever Cla
 - Each PR link in Claude's replies becomes the PR's Octicon, its number and its title, for example ` #42 Fix flaky login test`.
 - The icon and number are colored by state: green for open, gray for draft, purple for merged, red for closed. Approved and changes-requested PRs get a second icon.
 - The title is underlined and links to the PR.
-- The mod rechecks open PRs every minute and merged or closed PRs every 10 minutes. When a state changes, every message showing that PR redraws.
+- PRs mentioned in the last 20 messages or the last 30 minutes are rechecked every 15 seconds. Older open PRs are rechecked every 5 minutes, closed PRs every 10 minutes, and merged PRs never. When a state changes, every message showing that PR redraws.
+- All due PRs go in one GraphQL request, which costs 1 point of your 5,000-per-hour GitHub API budget however many PRs it holds.
+- Checking pauses after 30 minutes without activity. Your next prompt refreshes every open PR before the turn starts.
 - On a real state change (for example open to merged), you get a toast and Claude gets a short note, so it stops treating a merged PR as open.
 
 ## Requirements
