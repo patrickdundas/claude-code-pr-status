@@ -9,6 +9,7 @@ import { BATCH_MAX, IDLE_MS, batchArgs, interval, isRecent, parseBatch, refOf } 
 import type { Seen } from './poll'
 
 const prs = atom({ plugin: 'pr-status', key: 'prs' } as const, {} as Record<string, PrStatus>)
+const isGuided = atom({ plugin: 'pr-status', key: 'isGuided' } as const, false)
 
 const TICK_MS = 5_000
 const DRAWN_ON = new Set(['terminal', 'desktop'])
@@ -102,17 +103,22 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('prompt.compose', async ($, e, next) => {
-    const result = await next(e)
-    if (!e.surfaces.some(s => DRAWN_ON.has(s))) return result
-    return { sections: [...result.sections, { id: 'pr-status:links', text: GUIDE, scope: 'session' as const }] }
-  }).catch(($, e, next) => next(e))
-
-  // Refresh before the turn starts, so Claude never begins a turn on stale state.
+  // A session renders its system prompt once, so the guide rides the first prompt instead.
   on('prompt.submit', async ($, e, next) => {
     activeAt = await $.clock.now()
     await poll($, true)
-    return next(e)
+    const surfaces = await $.session.surfaces()
+    const isDrawn = !surfaces.length || surfaces.some(s => DRAWN_ON.has(s))
+    if (!isDrawn || (await read($, isGuided))) return next(e)
+    await update($, isGuided, () => true)
+    return next({ ...e, context: [...(e.context ?? []), GUIDE] })
+  }).catch(($, e, next) => next(e))
+
+  // Compaction can drop the guide from the conversation, so send it again afterwards.
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    if (!('skip' in result)) await update($, isGuided, () => false)
+    return result
   }).catch(($, e, next) => next(e))
 
   on('session.append', async ($, e, next) => {

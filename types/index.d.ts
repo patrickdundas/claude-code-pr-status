@@ -10,6 +10,6 @@ export type PrStatus = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'pr-status': { prs: Record<string, PrStatus> }
+    'pr-status': { prs: Record<string, PrStatus>; isGuided: boolean }
   }
 }

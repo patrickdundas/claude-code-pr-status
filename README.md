@@ -10,7 +10,7 @@ A Claude Code mod that shows the live state of GitHub pull requests wherever Cla
 - Checking pauses after 30 minutes without activity. Your next prompt refreshes every open PR before the turn starts.
 - On a real state change (for example open to merged), you get a toast and Claude gets a short note, so it stops treating a merged PR as open.
 
-- In the terminal and the Desktop app, the mod adds a short section to Claude's system prompt. It asks Claude to write PR references as bare URLs, without repeating the title, number or state, so nothing appears twice.
+- In the terminal and the Desktop app, the mod attaches a short guide to your first prompt of each session, and again after compaction. It asks Claude to write PR references as bare URLs, without repeating the title, number or state. If Claude repeats them anyway, the mod drops the copy beside the badge.
 
 ## Requirements
 
